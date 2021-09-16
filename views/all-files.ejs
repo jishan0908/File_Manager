@@ -1,0 +1,100 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Uploaded Files</title>
+</head>
+<body>
+    
+    <nav>
+        <div class="site-title">
+               
+
+         <a href="/"><h2>File System app</h2></a>
+         <p>Only file owner will be displayed by their private key</p> 
+         </div> 
+        
+    </nav>
+    <div class="File content">
+         <%let size=0 ;%>
+        <% if(docs.length>0){ %>
+          <% size=docs.length ; %>
+         <% } %>
+           
+
+        <h2><%=size%> Current data/files </h2>
+        <% if(size > 0 ){ %>
+         
+        
+        <table>
+            <tr>
+             <th>UPLOADER</th>
+             <th>PUBLIC-KEY</th>
+             <th>FILENAME</th>
+             <th>DOWNLOAD</th>
+             <th>DELETE</th>
+             
+            </tr>
+            <% for(var i=0; i < docs.length; i++) { %>
+
+                <tr>
+                 <td><%= docs[i].uploader_ip %></td>
+                 <td><%= docs[i].public_key %></td>
+                 <td><%= docs[i].file_name %></td>
+                 <td>   <a href= <%=`/files/${docs[i].public_key}` %> >DOWNLOAD</a> </td>  
+                 <td>   <button onclick="deleteFunction('<%= docs[i]._id %>')">Delete</button></td>  
+                 
+                 
+               </tr>
+            <% } %>
+            </table>
+            
+            <script>
+                function deleteFunction  (priv_key){
+                    console.log('delete function calllllleddd',priv_key)
+                    try{
+                        const endpoint=`/files/${priv_key}`;
+                        const redirect=`/all-files`;
+                        fetch(endpoint,{
+                        method:'DELETE'
+                        })
+                        .then((response)=>response.json())
+                        .then((data)=>
+                             window.location.href=data.redirect
+                        
+                        )
+                        .catch(err=> console.log('Error from promise'))
+                        
+                        
+                    }catch(e){
+                        console.log('error main catch block');
+                    }
+                }
+                /*const trashcan=document.querySelector('a.delete');
+                trashcan.addEventListener('click',(e)=>{
+                   const endpoint=`/files/${trashcan.dataset.doc}`;
+                   fetch(endpoint,{
+                       method:'DELETE'
+                   })
+
+                })
+                .then(()=>{
+
+                })
+                .catch(err=>{
+                    console.log(err);
+                })*/
+            
+            </script>
+        
+        <% } %>
+    </div>
+    <div>
+        <ul>
+            <li><a href="/">Go to home</a></li>
+            <li><a href="/single-file-upload">Upload A file </a></li>
+        </ul> 
+    </div>
+    
+</body>
+</html>

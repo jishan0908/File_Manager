@@ -1,0 +1,279 @@
+/*
+This file consists of 7 API and 2 core methods
+Requiring all the packages
+*/
+
+require('dotenv/config');//all env variables should reside here
+const express=require('express')//Express .js framework for routing purposes
+const mongoose=require('mongoose');//For interacting Mongodb and creation of the schema 
+const router=express.Router();
+var cron = require('node-cron');//An npm package for running cron job at predefined intervals 
+const chalk=require('chalk');//package for consoling output with colors
+const fs=require('fs');//built-in package for working with files and folder
+const path=require('path')//for resolving paths
+const multer  = require('multer');//package for uploading files
+const User = require('../models/user');//The user schema
+const Files = require('../models/file');//The file schema
+const Autokey = require('../models/autokey');//This schema is used for the purpose of auto-increment of "files" collection
+
+/*
+runMyCron is a function for running cron job on the file system
+After a time interval is set the cron job starts executing
+to clean all the uploaded files
+Note that currently the cron regex is defined as '* * * * * *'
+which means runMyCron() will be executed every second
+Currently the regex expression is not defined in the .env
+and it hard coded in the function itself 
+
+*/
+let runMyCron=()=>{
+    try{
+      cron.schedule('* * * * * *', () => {///define the cron regex in .env later
+          let data=[];
+          let z_path=path.join(path.parse(__dirname).dir,process.env.FOLDER);
+          if(fs.existsSync(z_path)){
+              data =  fs.readdirSync(z_path);
+              if(data.length==0){
+                  console.log(chalk.white.inverse('Internal memory clean'));
+              }
+              else{
+              data.map(e=>{fs.unlinkSync(path.join(process.env.FOLDER,e))})
+              }                
+          }
+          else{
+              console.log(chalk.white.inverse('No such directory from cron method'));
+          }
+      
+      
+      })
+   }catch(err){
+      console.log(chalk.red.inverse('Error from cron.schedule() ') ,err);
+      return err;
+   }
+}
+/*
+storage and upload are 2 basic functions for the multer middlewire
+which will be executed when multer middlewire is executed
+from the (/files/:public-key)API
+*/ 
+var storage = multer.diskStorage({
+    
+    destination: function (req, file, cb) {
+      cb(null, process.env.FOLDER)
+    },
+    filename: function (req, file, cb) {
+      cb(null, file.originalname)
+    }
+  })
+   
+var upload = multer({ storage: storage })
+
+/*
+NOTE VERY IMPORTANT
+uncommenting   runMyCron()
+will act as in internal storage cleanup
+for the uploaded files in 'FOLDER'
+*/
+
+//runMyCron();//---------------------->>Important function for cleaning internal FOLDER directory
+
+//------------------------------------------------------------------------------------------------ 
+/*
+  This API is used for downloading selected files from mongodb database
+  if and only if the user has a daily download limit greater than 0
+  An id/public-key  is required
+   
+*/
+router.get('/files/:id',async(req,res,next)=>{
+    try{
+       
+        if(!req.params.id){
+            res.status(400).send('public key is required');
+        }
+        let userDoc=await User.findOne({user_ip:req.ip});
+        if(userDoc.user_download_limit<=0){
+            res.json({
+                message:'No download possible,wait for daily update'
+            })
+        }
+        let doc=await Files.findOne({public_key:parseInt(req.params.id,10)},{file_data:1,file_name:1});
+        
+        if(doc){
+             let z_path=path.join(path.parse(__dirname).dir,process.env.DOWNLOAD_FOLDER)
+             let z_path_file=path.join( path.parse(__dirname).dir,process.env.DOWNLOAD_FOLDER,doc.file_name);
+       
+            if(!fs.existsSync(z_path)){
+                console.log('folder does not exist,try to create now')
+                fs.mkdirSync(z_path,{recursive:true});
+                console.log('folder created for downloading,try to write now');
+            }
+            console.log('folder exist please proceed')
+            fs.writeFileSync(z_path_file,doc.file_data);    
+            res.download(z_path_file,async()=>{
+                console.log('DONE')
+                userDoc.user_download_limit=userDoc.user_download_limit-1;
+                userDoc.save()
+            });
+        }
+       else{
+            res.json({
+                message:"File does not exist in the DB"
+            });
+    }
+    }catch(e){
+        console.log("main catch from download api",e);
+    }
+
+        //res.sendFile('download/')
+})
+
+/*
+This API renders an EJS to the client with multi-part form 
+The user can select multipart form data from their drive 
+and can upload it     
+*/
+router.get('/single-file-upload',(req,res)=>{
+     
+        res.render('single-file-upload');    
+})
+/*
+    This API is used for uploading files with npm multer package
+    First it checks whether a client actually selected a file to upload
+    if not then it respond to the client stating "No file to select"
+    Once a file(multipart-form data) is selected,the API then checks if
+    the client has a valid upload-limit(greater than zero)then
+    exectutes multer
+    middlewires to upload to the local folder "FOLDER"
+    Once the file is uploaded the client's upload limit get deducted
+    and binary data from file is stored in the 'files' collection along 
+    with other necessary fields.A JSON object is also displayed in the 
+    front-end using EJS
+*/	
+
+router.post('/files', upload.single('myFile'), async(req, res, next) => {
+    try{
+        const file = req.file
+        if (!file) {
+         res.status(400).end("No file to select")
+        }
+        let userDoc=await User.findOne({user_ip:req.ip});
+        if(userDoc.user_upload_limit<=0){
+            res.json({
+                message:'daily upload limit is empty,database should update your status'
+            })
+        }
+       
+        let pubKey=await autoMethod();
+        let doc=await User.findOne({user_ip:req.ip});
+        if(!doc){
+            const user=new User({
+                user_ip:req.ip
+            })
+            doc=await user.save();
+            console.log(doc);
+           
+        }
+        const ufile=new Files({
+            uploader_ip:req.ip,
+            public_key:pubKey,
+            file_path:file.path,
+            file_name:file.filename,
+            file_data:fs.readFileSync(file.path)
+            
+           
+
+        })
+        doc=await ufile.save();
+        userDoc.user_upload_limit=userDoc.user_upload_limit-1;
+        await userDoc.save();
+        console.log(userDoc);
+
+        res.render('upload',{file});
+    }catch(e){
+        console.log('Error occured while uploading file,main catch block')
+    }      
+})        
+
+/*
+Renders the home page of the application
+*/ 
+router.get('/',(req,res)=>{
+   
+    res.render('index');
+})
+/*
+The about page of the application
+*/ 
+router.get('/about',(req,res)=>{ 
+   
+    res.render('about');
+})
+/*
+  The /all-files API dynamically displays all the current or existing files  in the database
+  also some link to other important pages with in this app
+    
+*/
+
+router.get('/all-files',async(req,res)=>{
+    
+    let docs=await Files.find({},{uploader_ip:1,public_key:1,file_name:1});
+    
+    res.render('all-files',{docs});
+})
+/*
+The /files/:code API deletes a selected  file from the database
+code is the private key,using the mongoose Object id 
+For now anyone can delete any others'  file using the private key,we could modify
+by checking if the client is the uploader before deletion
+Once deleted successfully,API is redirected from the front end to /all-files   
+*/
+
+
+router.delete('/files/:code', async(req,res)=>{
+    try{
+        console.log(chalk.white.inverse('yesss delete api called'));
+        console.log('req.params.code=====>> ',req.params)
+        if(!req.params.code){
+            res.status(400).send('public key is required');
+        }
+       
+        let privateKey=mongoose.Types.ObjectId(req.params.code);
+        let deleteInfo=await Files.deleteOne({_id:privateKey})
+        console.log('deleteInfo===> ',deleteInfo)
+        if(deleteInfo.deletedCount==1){
+             console.log(chalk.blue.inverse('File deleted from backend'))
+             res.json({data:'DELETION SUCCESS',
+                       status:200,
+                       redirect:'/all-files' });
+        }
+        else{console.log(chalk.blue.inverse('Could not delete file,check delete API'));
+        
+            res.json({'data':'DELETION FAILED',
+            'status':404});
+        }
+       
+
+    }catch(err){
+        res.json(err);
+
+    }
+})
+/*
+autoMethod is used for generating public-key
+before the insertion to "files" collection in the db
+*/
+
+
+let autoMethod = async()=>{
+    let toReturn;
+    //console.log(chalk.bgGreenBright.inverse('aysnc function:AUTO called'));
+    let doc=await Autokey.find({});
+   // console.log(chalk.bgGreenBright.inverse('printing doc--> '),doc[0]);
+    toReturn=doc[0].numberSeq;
+    doc[0].numberSeq=doc[0].numberSeq+1;
+    await doc[0].save();
+    return toReturn;
+
+}
+
+module.exports=router//exporting the router object

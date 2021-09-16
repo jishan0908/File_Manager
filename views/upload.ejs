@@ -1,0 +1,32 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Success</title>
+</head>
+<body>
+    
+    <nav>
+        <div class="site-title">
+               
+
+         <a href="/"><h2>File upload successful</h2></a>
+         <p></p> 
+         </div> 
+         <ul>
+             <li><a href="/">Go to home</a></li>
+             <li><a href="/single-file-upload">Upload Another file </a></li>
+             <li><a href="/all-files">List of uploaded files</a></li>
+             
+         </ul> 
+    </nav>
+    <div class="File content">
+        <h5>Information about uploaded file,JSON</h5>
+        <h6 >originalname: <%= file.originalname%></h6>
+        <h6 >encoding: <%=file.encoding%></h6>
+        <h6 >mimetype: <%=file.mimetype%></h6>
+        <h6 >filename: <%=file.filename%></h6>
+        <h6 >path: <%=file.path%></h6>    
+    </div>    
+</body>
+</html>
